@@ -18,19 +18,13 @@
     "computer-vision"
   ],
   "license": "MIT",
-  "dependencies": {
-    "jsfeat": "git+https://github.com/inspirit/jsfeat",
-    "mosse": "^0.1.1",
-    "numeric": "^1.2.6",
-    "prettier": "^1.18.2",
-    "raf": "^3.4.1"
-  },
   "devDependencies": {
     "@types/jest": "^24.0.15",
     "jest": "^24.8.0",
     "typescript": "^3.5.2",
     "husky": "^2.7.0",
     "lint-staged": "^8.2.1",
+    "prettier": "^1.18.2",
     "ts-jest": "24.0.2",
     "tslint": "5.18.0",
     "tslint-config-prettier": "1.18.0",

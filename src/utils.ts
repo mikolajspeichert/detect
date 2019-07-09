@@ -3,8 +3,8 @@ import { Classifier } from "."
 export const convertRgbaToGrayscale = (src: Uint8ClampedArray, dst?: Uint32Array) => {
     const res = dst || new Uint32Array(src.length >> 2)
 
-    for (let i = 0; i < src.length; i += 4) {
-        res[i >> 2] = (src[i] * 4899 + src[i + 1] * 9617 + src[i + 2] * 1868 + 8192) >> 14
+    for (let i = 0; i < src.length; i += 2) {
+        res[i >> 2] = (src[i] * 4899 + src[++i] * 9617 + src[++i] * 1868 + 8192) >> 14
     }
     return res
 }
@@ -41,7 +41,7 @@ export const rescaleImage = (
 }
 
 export const mirrorImage = (src: Uint32Array, srcWidth: number, srcHeight: number, dst?: Uint32Array) => {
-    if (!dst) dst = new Uint32Array(src.length)
+    if (!dst) dst = new Uint32Array(srcWidth * srcHeight)
 
     let index = 0
     for (let y = 0; y < srcHeight; ++y) {
@@ -56,7 +56,7 @@ export const mirrorImage = (src: Uint32Array, srcWidth: number, srcHeight: numbe
 }
 
 export const computeCanny = (src: Uint32Array, srcWidth: number, srcHeight: number, dst?: Uint32Array) => {
-    const srcLength = src.length
+    const srcLength = srcWidth * srcHeight
     if (!dst) dst = new Uint32Array(srcLength)
     const buffer1 = dst === src ? new Uint32Array(srcLength) : dst
     const buffer2 = new Uint32Array(srcLength)
@@ -168,7 +168,7 @@ export const computeRsat = (src: Uint32Array, srcWidth: number, srcHeight: numbe
 
     for (let i = srcHeightTimesDstWidth; i >= 0; i -= dstWidth) dst[i] = 0
 
-    for (let i = dstWidth - 1; i >= 0; --i) dst[i] = 0
+    for (let i = 0; i < dstWidth; ++i) dst[i] = 0
 
     let index = 0
     for (let y = 0; y < srcHeight; ++y) {
@@ -260,38 +260,28 @@ export const compileClassifier = (src: Classifier, width: number, dst?: Classifi
         const numComplexClassifiers = (dstUint32[++dstIndex] = src[++srcIndex])
         for (let j = 0, jEnd = numComplexClassifiers; j < jEnd; ++j) {
             const tilted = (dst[++dstIndex] = src[++srcIndex])
-            const numFeaturesTimes2 = (dstUint32[++dstIndex] = src[++srcIndex] * 3)
+            const numFeaturesTimes3 = (dstUint32[++dstIndex] = src[++srcIndex] * 3)
             if (tilted) {
-                for (const kEnd = dstIndex + numFeaturesTimes2; dstIndex < kEnd; ) {
-                    const featureOffset = src[srcIndex + 1] + src[srcIndex + 2] * width
-                    const featureWidthTimesWidth = src[srcIndex + 3] * (width + 1)
-                    const featureHeightTimesWidth = src[srcIndex + 4] * (width - 1)
-
-                    dstUint32[++dstIndex] = featureOffset
-                    dstUint32[++dstIndex] = featureWidthTimesWidth + (featureHeightTimesWidth << 16)
-
-                    dst[++dstIndex] = src[srcIndex + 5]
-                    srcIndex += 5
+                for (const kEnd = dstIndex + numFeaturesTimes3; dstIndex < kEnd; ) {
+                    dstUint32[++dstIndex] = src[++srcIndex] + src[++srcIndex] * width
+                    dstUint32[++dstIndex] = src[++srcIndex] * (width + 1) + ((src[++srcIndex] * (width - 1)) << 16)
+                    dst[++dstIndex] = src[++srcIndex]
                 }
             } else {
-                for (const kEnd = dstIndex + numFeaturesTimes2; dstIndex < kEnd; ) {
-                    const featureOffset = src[srcIndex + 1] + src[srcIndex + 2] * width
-                    const featureWidth = src[srcIndex + 3]
-                    const featureHeightTimesWidth = src[srcIndex + 4] * width
-
-                    dstUint32[++dstIndex] = featureOffset
-                    dstUint32[++dstIndex] = featureWidth + (featureHeightTimesWidth << 16)
-                    dst[++dstIndex] = src[srcIndex + 5]
-                    srcIndex += 5
+                for (const kEnd = dstIndex + numFeaturesTimes3; dstIndex < kEnd; ) {
+                    dstUint32[++dstIndex] = src[++srcIndex] + src[++srcIndex] * width
+                    dstUint32[++dstIndex] = src[++srcIndex] + ((src[++srcIndex] * width) << 16)
+                    dst[++dstIndex] = src[++srcIndex]
                 }
             }
-            const classifierThreshold = src[++srcIndex]
-            for (let k = 0; k < numFeaturesTimes2; ) {
-                dst[dstIndex - k] /= classifierThreshold
+
+            const inverseClassifierThreshold = 1 / src[++srcIndex]
+            for (let k = 0; k < numFeaturesTimes3; ) {
+                dst[dstIndex - k] *= inverseClassifierThreshold
                 k += 3
             }
 
-            if (classifierThreshold < 0) {
+            if (inverseClassifierThreshold < 0) {
                 dst[dstIndex + 2] = src[++srcIndex]
                 dst[dstIndex + 1] = src[++srcIndex]
                 dstIndex += 2
@@ -308,6 +298,7 @@ export const detectUtil = (
     sat: Uint32Array,
     rsat: Uint32Array,
     ssat: Uint32Array,
+    cannySat: Uint32Array,
     width: number,
     height: number,
     step: number,
@@ -321,6 +312,7 @@ export const detectUtil = (
     const windowHeight = classifierUint32[1]
     const windowHeightTimesWidth = windowHeight * width
     const area = windowWidth * windowHeight
+    const inverseArea = 1 / area
     const widthTimesStep = width * step
     const rects = []
 
@@ -330,6 +322,15 @@ export const detectUtil = (
             const satIndex1 = satIndex + windowWidth
             const satIndex2 = satIndex + windowHeightTimesWidth
             const satIndex3 = satIndex2 + windowWidth
+
+            if (cannySat) {
+                const edgesDensity =
+                    (cannySat[satIndex] - cannySat[satIndex1] - cannySat[satIndex2] + cannySat[satIndex3]) * inverseArea
+                if (edgesDensity < 60 || edgesDensity > 200) {
+                    satIndex += widthTimesStep
+                    continue
+                }
+            }
 
             // Normalize mean and variance of window area:
             const mean = sat[satIndex] - sat[satIndex1] - sat[satIndex2] + sat[satIndex3]
@@ -383,13 +384,13 @@ export const detectUtil = (
     return rects
 }
 
-export const groupRectangles = (rects: number[][], minNeighbors: number, confluence: number = 1.0) => {
+export const groupRectangles = (rects: number[][], minNeighbors: number, confluence: number = 0.25) => {
     const rectsLength = rects.length
 
     // Partition rects into similarity classes:
     let numClasses = 0
     const labels = new Array(rectsLength)
-    for (let i = 0; i < labels.length; ++i) {
+    for (let i = 0; i < rectsLength; ++i) {
         labels[i] = 0
     }
 
@@ -433,33 +434,40 @@ export const groupRectangles = (rects: number[][], minNeighbors: number, conflue
         ++group[4]
     }
 
-    for (let i = numClasses - 1; i >= 0; --i) {
-        const numNeighbors = groups[i][4]
+    for (let i = 0; i < numClasses; ++i) {
+        let numNeighbors = groups[i][4]
         if (numNeighbors >= minNeighbors) {
             const group = groups[i]
-            group[0] /= numNeighbors
-            group[1] /= numNeighbors
-            group[2] /= numNeighbors
-            group[3] /= numNeighbors
+            numNeighbors = 1 / numNeighbors
+            group[0] *= numNeighbors
+            group[1] *= numNeighbors
+            group[2] *= numNeighbors
+            group[3] *= numNeighbors
         } else groups.splice(i, 1)
     }
 
+    // Filter out small rectangles inside larger rectangles:
     // Filter out small rectangles inside larger rectangles:
     const filteredGroups = []
     for (let i = 0; i < numClasses; ++i) {
         const r1 = groups[i]
         let j = 0
-        for (j = 0; j < numClasses; ++j) {
-            if (i === j) continue
+        for (j = i + 1; j < numClasses; ++j) {
             const r2 = groups[j]
-            const dx = r2[2] * 0.2
-            const dy = r2[3] * 0.2
 
+            const dx = r2[2] * confluence // * 0.2;
+            const dy = r2[3] * confluence // * 0.2;
+
+            // Not antisymmetric, must check both r1 > r2 and r2 > r1:
             if (
-                r1[0] >= r2[0] - dx &&
-                r1[1] >= r2[1] - dy &&
-                r1[0] + r1[2] <= r2[0] + r2[2] + dx &&
-                r1[1] + r1[3] <= r2[1] + r2[3] + dy
+                (r1[0] >= r2[0] - dx &&
+                    r1[1] >= r2[1] - dy &&
+                    r1[0] + r1[2] <= r2[0] + r2[2] + dx &&
+                    r1[1] + r1[3] <= r2[1] + r2[3] + dy) ||
+                (r2[0] >= r1[0] - dx &&
+                    r2[1] >= r1[1] - dy &&
+                    r2[0] + r2[2] <= r1[0] + r1[2] + dx &&
+                    r2[1] + r2[3] <= r1[1] + r1[3] + dy)
             ) {
                 break
             }

@@ -6,7 +6,8 @@ import {
     computeSat,
     computeSquaredSat,
     computeRsat,
-    compileClassifier
+    compileClassifier,
+    computeCanny
 } from "./utils"
 
 export interface Classifier extends Float32Array {
@@ -29,20 +30,29 @@ export const detector = (width: number, height: number, scaleFactor: number, cla
         scale *= scaleFactor
     }
 
+    let gray: Uint32Array | undefined
+    let sat: Uint32Array | undefined
+    let ssat: Uint32Array | undefined
+    let rsat: Uint32Array | undefined
+    let canny: Uint32Array | undefined
+    let cannySat: Uint32Array | undefined
+
     const detect = (
         image: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement,
-        group: number,
-        stepSize: number = 1
+        group: number = 1,
+        stepSize: number = 1,
+        roi?: number[],
+        c?: any
     ) => {
         const w = canvas.width
         const h = canvas.height
 
-        context.drawImage(image, 0, 0, w, h)
+        if (roi) context.drawImage(image, roi[0], roi[1], roi[2], roi[3], 0, 0, w, h)
+        else context.drawImage(image, 0, 0, w, h)
+
         const imageData = context.getImageData(0, 0, w, h).data
-        const gray = convertRgbaToGrayscale(imageData)
-        let sat: Uint32Array | undefined
-        let ssat: Uint32Array | undefined
-        let rsat: Uint32Array | undefined
+        gray = convertRgbaToGrayscale(imageData)
+
         let rects: number[][] = []
 
         let s = 1
@@ -56,16 +66,30 @@ export const detector = (width: number, height: number, scaleFactor: number, cla
                 scaledGray = rescaleImage(gray, w, h, s, scaledGray)
             }
 
+            if (c) {
+                canny = computeCanny(scaledGray, scaledWidth, scaledHeight, canny)
+                cannySat = computeSat(canny, scaledWidth, scaledHeight, cannySat)
+            }
+
             sat = computeSat(scaledGray, scaledWidth, scaledHeight, sat)
             ssat = computeSquaredSat(scaledGray, scaledWidth, scaledHeight, ssat)
             if (tilted) rsat = computeRsat(scaledGray, scaledWidth, scaledHeight, rsat)
 
-            const newRects = detectUtil(sat, rsat!, ssat, scaledWidth, scaledHeight, stepSize, compiledClassifiers[i])
+            const newRects = detectUtil(
+                sat,
+                rsat!,
+                ssat,
+                cannySat!,
+                scaledWidth,
+                scaledHeight,
+                stepSize,
+                compiledClassifiers[i]
+            )
             for (let j = newRects.length - 1; j >= 0; --j) {
-                newRects[j][0] *= w / scaledWidth
-                newRects[j][1] *= h / scaledHeight
-                newRects[j][2] *= w / scaledWidth
-                newRects[j][3] *= h / scaledHeight
+                newRects[j][0] *= s
+                newRects[j][1] *= s
+                newRects[j][2] *= s
+                newRects[j][3] *= s
             }
             rects = rects.concat(newRects)
 

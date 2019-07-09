@@ -472,18 +472,6 @@ export const groupRectangles = (rects: number[][], minNeighbors: number, conflue
     return filteredGroups
 }
 
-/**
- * Double-exponential smoothing based on Wright's modification of Holt's method
- * for irregular data.
- *
- * Copyright 2014 Martin Tschirsich
- * Released under the MIT license
- *
- * @param {Array}  alphas        Exponential smoothing factors
- * @param {Array}  initialValues Initial values before smoothing
- * @param {Number} lookAhead     Additionally added linear trend, between 0 - 1
- */
-
 export const Smoother = (alphas: number[], initialValues: number[], lookAhead: number = 1.0) => {
     let lastUpdate = new Date().getTime()
     const initialAlphas = [...alphas]

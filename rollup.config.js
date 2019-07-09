@@ -13,7 +13,7 @@ const isProd = env => env === 'production'
 const config = (env, format) => ({
   input: 'compiled/index.js',
   output: {
-    file: `./build/clmtracker2.${env}.js`,
+    file: `./build/detect.${env}.js`,
     name: 'CLM-N',
     exports: 'named',
     format,
@@ -27,10 +27,6 @@ const config = (env, format) => ({
     }),
     commonjs({
       ignoreGlobal: false,
-    }),
-    babel({
-      exclude: 'node_modules/**',
-      runtimeHelpers: true,
     }),
     globals(),
     isProd(env) && sizeSnapshot(),

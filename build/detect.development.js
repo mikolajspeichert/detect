@@ -543,7 +543,7 @@ var detector = function (width, height, scaleFactor, classifier) {
         }
         return (group ? groupRectangles(rects, group) : rects).sort(function (r1, r2) { return r2[4] - r1[4]; });
     };
-    return { detect: detect };
+    return { detect: detect, canvas: canvas };
 };
 var classifiers = { eye: eye, frontalface: frontalface };
 

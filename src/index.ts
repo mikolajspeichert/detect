@@ -98,7 +98,7 @@ export const detector = (width: number, height: number, scaleFactor: number, cla
         return (group ? groupRectangles(rects, group) : rects).sort((r1, r2) => r2[4] - r1[4])
     }
 
-    return { detect }
+    return { detect, canvas }
 }
 import { eye } from "./classifiers/eye"
 import { frontalface } from "./classifiers/frontalface"

@@ -24,8 +24,8 @@ var __spread = (undefined && undefined.__spread) || function () {
 };
 var convertRgbaToGrayscale = function (src, dst) {
     var res = dst || new Uint32Array(src.length >> 2);
-    for (var i = 0; i < src.length; i += 4) {
-        res[i >> 2] = (src[i] * 4899 + src[i + 1] * 9617 + src[i + 2] * 1868 + 8192) >> 14;
+    for (var i = 0; i < src.length; i += 2) {
+        res[i >> 2] = (src[i] * 4899 + src[++i] * 9617 + src[++i] * 1868 + 8192) >> 14;
     }
     return res;
 };
@@ -53,7 +53,7 @@ var rescaleImage = function (src, srcWidth, srcHeight, factor, dst) {
 };
 var mirrorImage = function (src, srcWidth, srcHeight, dst) {
     if (!dst)
-        dst = new Uint32Array(src.length);
+        dst = new Uint32Array(srcWidth * srcHeight);
     var index = 0;
     for (var y = 0; y < srcHeight; ++y) {
         for (var x = srcWidth >> 1; x >= 0; --x) {
@@ -66,7 +66,7 @@ var mirrorImage = function (src, srcWidth, srcHeight, dst) {
     return dst;
 };
 var computeCanny = function (src, srcWidth, srcHeight, dst) {
-    var srcLength = src.length;
+    var srcLength = srcWidth * srcHeight;
     if (!dst)
         dst = new Uint32Array(srcLength);
     var buffer1 = dst === src ? new Uint32Array(srcLength) : dst;
@@ -164,7 +164,7 @@ var computeRsat = function (src, srcWidth, srcHeight, dst) {
         dst = new Uint32Array(srcWidth * srcHeight + dstWidth + srcHeight);
     for (var i = srcHeightTimesDstWidth; i >= 0; i -= dstWidth)
         dst[i] = 0;
-    for (var i = dstWidth - 1; i >= 0; --i)
+    for (var i = 0; i < dstWidth; ++i)
         dst[i] = 0;
     var index = 0;
     for (var y = 0; y < srcHeight; ++y) {
@@ -249,35 +249,27 @@ var compileClassifier = function (src, width, dst) {
         var numComplexClassifiers = (dstUint32[++dstIndex] = src[++srcIndex]);
         for (var j = 0, jEnd = numComplexClassifiers; j < jEnd; ++j) {
             var tilted = (dst[++dstIndex] = src[++srcIndex]);
-            var numFeaturesTimes2 = (dstUint32[++dstIndex] = src[++srcIndex] * 3);
+            var numFeaturesTimes3 = (dstUint32[++dstIndex] = src[++srcIndex] * 3);
             if (tilted) {
-                for (var kEnd = dstIndex + numFeaturesTimes2; dstIndex < kEnd;) {
-                    var featureOffset = src[srcIndex + 1] + src[srcIndex + 2] * width;
-                    var featureWidthTimesWidth = src[srcIndex + 3] * (width + 1);
-                    var featureHeightTimesWidth = src[srcIndex + 4] * (width - 1);
-                    dstUint32[++dstIndex] = featureOffset;
-                    dstUint32[++dstIndex] = featureWidthTimesWidth + (featureHeightTimesWidth << 16);
-                    dst[++dstIndex] = src[srcIndex + 5];
-                    srcIndex += 5;
+                for (var kEnd = dstIndex + numFeaturesTimes3; dstIndex < kEnd;) {
+                    dstUint32[++dstIndex] = src[++srcIndex] + src[++srcIndex] * width;
+                    dstUint32[++dstIndex] = src[++srcIndex] * (width + 1) + ((src[++srcIndex] * (width - 1)) << 16);
+                    dst[++dstIndex] = src[++srcIndex];
                 }
             }
             else {
-                for (var kEnd = dstIndex + numFeaturesTimes2; dstIndex < kEnd;) {
-                    var featureOffset = src[srcIndex + 1] + src[srcIndex + 2] * width;
-                    var featureWidth = src[srcIndex + 3];
-                    var featureHeightTimesWidth = src[srcIndex + 4] * width;
-                    dstUint32[++dstIndex] = featureOffset;
-                    dstUint32[++dstIndex] = featureWidth + (featureHeightTimesWidth << 16);
-                    dst[++dstIndex] = src[srcIndex + 5];
-                    srcIndex += 5;
+                for (var kEnd = dstIndex + numFeaturesTimes3; dstIndex < kEnd;) {
+                    dstUint32[++dstIndex] = src[++srcIndex] + src[++srcIndex] * width;
+                    dstUint32[++dstIndex] = src[++srcIndex] + ((src[++srcIndex] * width) << 16);
+                    dst[++dstIndex] = src[++srcIndex];
                 }
             }
-            var classifierThreshold = src[++srcIndex];
-            for (var k = 0; k < numFeaturesTimes2;) {
-                dst[dstIndex - k] /= classifierThreshold;
+            var inverseClassifierThreshold = 1 / src[++srcIndex];
+            for (var k = 0; k < numFeaturesTimes3;) {
+                dst[dstIndex - k] *= inverseClassifierThreshold;
                 k += 3;
             }
-            if (classifierThreshold < 0) {
+            if (inverseClassifierThreshold < 0) {
                 dst[dstIndex + 2] = src[++srcIndex];
                 dst[dstIndex + 1] = src[++srcIndex];
                 dstIndex += 2;
@@ -290,7 +282,7 @@ var compileClassifier = function (src, width, dst) {
     }
     return dst.subarray(0, dstIndex + 1);
 };
-var detectUtil = function (sat, rsat, ssat, width, height, step, classifier) {
+var detectUtil = function (sat, rsat, ssat, cannySat, width, height, step, classifier) {
     width += 1;
     height += 1;
     var classifierUint32 = new Uint32Array(classifier.buffer);
@@ -298,6 +290,7 @@ var detectUtil = function (sat, rsat, ssat, width, height, step, classifier) {
     var windowHeight = classifierUint32[1];
     var windowHeightTimesWidth = windowHeight * width;
     var area = windowWidth * windowHeight;
+    var inverseArea = 1 / area;
     var widthTimesStep = width * step;
     var rects = [];
     for (var x = 0; x + windowWidth < width; x += step) {
@@ -306,6 +299,13 @@ var detectUtil = function (sat, rsat, ssat, width, height, step, classifier) {
             var satIndex1 = satIndex + windowWidth;
             var satIndex2 = satIndex + windowHeightTimesWidth;
             var satIndex3 = satIndex2 + windowWidth;
+            if (cannySat) {
+                var edgesDensity = (cannySat[satIndex] - cannySat[satIndex1] - cannySat[satIndex2] + cannySat[satIndex3]) * inverseArea;
+                if (edgesDensity < 60 || edgesDensity > 200) {
+                    satIndex += widthTimesStep;
+                    continue;
+                }
+            }
             // Normalize mean and variance of window area:
             var mean = sat[satIndex] - sat[satIndex1] - sat[satIndex2] + sat[satIndex3];
             var variance = (ssat[satIndex] - ssat[satIndex1] - ssat[satIndex2] + ssat[satIndex3]) * area - mean * mean;
@@ -356,12 +356,12 @@ var detectUtil = function (sat, rsat, ssat, width, height, step, classifier) {
     return rects;
 };
 var groupRectangles = function (rects, minNeighbors, confluence) {
-    if (confluence === void 0) { confluence = 1.0; }
+    if (confluence === void 0) { confluence = 0.25; }
     var rectsLength = rects.length;
     // Partition rects into similarity classes:
     var numClasses = 0;
     var labels = new Array(rectsLength);
-    for (var i = 0; i < labels.length; ++i) {
+    for (var i = 0; i < rectsLength; ++i) {
         labels[i] = 0;
     }
     for (var i = 0; i < rectsLength; ++i) {
@@ -398,33 +398,38 @@ var groupRectangles = function (rects, minNeighbors, confluence) {
         group[3] += rect[3];
         ++group[4];
     }
-    for (var i = numClasses - 1; i >= 0; --i) {
+    for (var i = 0; i < numClasses; ++i) {
         var numNeighbors = groups[i][4];
         if (numNeighbors >= minNeighbors) {
             var group = groups[i];
-            group[0] /= numNeighbors;
-            group[1] /= numNeighbors;
-            group[2] /= numNeighbors;
-            group[3] /= numNeighbors;
+            numNeighbors = 1 / numNeighbors;
+            group[0] *= numNeighbors;
+            group[1] *= numNeighbors;
+            group[2] *= numNeighbors;
+            group[3] *= numNeighbors;
         }
         else
             groups.splice(i, 1);
     }
     // Filter out small rectangles inside larger rectangles:
+    // Filter out small rectangles inside larger rectangles:
     var filteredGroups = [];
     for (var i = 0; i < numClasses; ++i) {
         var r1 = groups[i];
         var j = 0;
-        for (j = 0; j < numClasses; ++j) {
-            if (i === j)
-                continue;
+        for (j = i + 1; j < numClasses; ++j) {
             var r2 = groups[j];
-            var dx = r2[2] * 0.2;
-            var dy = r2[3] * 0.2;
-            if (r1[0] >= r2[0] - dx &&
+            var dx = r2[2] * confluence; // * 0.2;
+            var dy = r2[3] * confluence; // * 0.2;
+            // Not antisymmetric, must check both r1 > r2 and r2 > r1:
+            if ((r1[0] >= r2[0] - dx &&
                 r1[1] >= r2[1] - dy &&
                 r1[0] + r1[2] <= r2[0] + r2[2] + dx &&
-                r1[1] + r1[3] <= r2[1] + r2[3] + dy) {
+                r1[1] + r1[3] <= r2[1] + r2[3] + dy) ||
+                (r2[0] >= r1[0] - dx &&
+                    r2[1] >= r1[1] - dy &&
+                    r2[0] + r2[2] <= r1[0] + r1[2] + dx &&
+                    r2[1] + r2[3] <= r1[1] + r1[3] + dy)) {
                 break;
             }
         }
@@ -490,16 +495,23 @@ var detector = function (width, height, scaleFactor, classifier) {
         compiledClassifiers[i] = compileClassifier(classifier, scaledWidth);
         scale *= scaleFactor;
     }
-    var detect = function (image, group, stepSize) {
+    var gray;
+    var sat;
+    var ssat;
+    var rsat;
+    var canny;
+    var cannySat;
+    var detect = function (image, group, stepSize, roi, c) {
+        if (group === void 0) { group = 1; }
         if (stepSize === void 0) { stepSize = 1; }
         var w = canvas.width;
         var h = canvas.height;
-        context.drawImage(image, 0, 0, w, h);
+        if (roi)
+            context.drawImage(image, roi[0], roi[1], roi[2], roi[3], 0, 0, w, h);
+        else
+            context.drawImage(image, 0, 0, w, h);
         var imageData = context.getImageData(0, 0, w, h).data;
-        var gray = convertRgbaToGrayscale(imageData);
-        var sat;
-        var ssat;
-        var rsat;
+        gray = convertRgbaToGrayscale(imageData);
         var rects = [];
         var s = 1;
         for (var i = 0; i < numScales; ++i) {
@@ -511,16 +523,20 @@ var detector = function (width, height, scaleFactor, classifier) {
             else {
                 scaledGray = rescaleImage(gray, w, h, s, scaledGray);
             }
+            if (c) {
+                canny = computeCanny(scaledGray, scaledWidth, scaledHeight, canny);
+                cannySat = computeSat(canny, scaledWidth, scaledHeight, cannySat);
+            }
             sat = computeSat(scaledGray, scaledWidth, scaledHeight, sat);
             ssat = computeSquaredSat(scaledGray, scaledWidth, scaledHeight, ssat);
             if (tilted)
                 rsat = computeRsat(scaledGray, scaledWidth, scaledHeight, rsat);
-            var newRects = detectUtil(sat, rsat, ssat, scaledWidth, scaledHeight, stepSize, compiledClassifiers[i]);
+            var newRects = detectUtil(sat, rsat, ssat, cannySat, scaledWidth, scaledHeight, stepSize, compiledClassifiers[i]);
             for (var j = newRects.length - 1; j >= 0; --j) {
-                newRects[j][0] *= w / scaledWidth;
-                newRects[j][1] *= h / scaledHeight;
-                newRects[j][2] *= w / scaledWidth;
-                newRects[j][3] *= h / scaledHeight;
+                newRects[j][0] *= s;
+                newRects[j][1] *= s;
+                newRects[j][2] *= s;
+                newRects[j][3] *= s;
             }
             rects = rects.concat(newRects);
             s *= scaleFactor;

@@ -5,8 +5,8 @@
     "gzipped": 117811
   },
   "build/detect.production.js": {
-    "bundled": 368348,
-    "minified": 280347,
-    "gzipped": 117811
+    "bundled": 369008,
+    "minified": 280558,
+    "gzipped": 117892
   }
 }

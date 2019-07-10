@@ -13,7 +13,7 @@ const isProd = env => env === 'production'
 const config = (env, format) => ({
   input: 'compiled/index.js',
   output: {
-    file: `./build/detect.${env}.js`,
+    file: `./build/detect.${format}.${env}.js`,
     name: 'detect',
     exports: 'named',
     format,
@@ -37,5 +37,6 @@ const config = (env, format) => ({
 
 export default [
   config('development', 'esm'),
-  config('production', 'esm'),
+  config('development', 'cjs'),
+  // config('production', 'esm'),
 ]

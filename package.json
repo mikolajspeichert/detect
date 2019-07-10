@@ -1,7 +1,8 @@
 {
   "name": "detect",
-  "version": "0.2.2",
-  "main": "build/index.js",
+  "version": "0.2.3",
+  "main": "build/detect.cjs.development.js",
+  "module": "build/detect.esm.development.js",
   "repository": {
     "type": "git",
     "url": "https://github.com/mikolajspeichert/detect.git"

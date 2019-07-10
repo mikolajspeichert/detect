@@ -5,8 +5,17 @@
     "gzipped": 117811
   },
   "build/detect.production.js": {
-    "bundled": 369024,
-    "minified": 280567,
-    "gzipped": 117896
+    "bundled": 364969,
+    "minified": 278906,
+    "gzipped": 117309,
+    "treeshaked": {
+      "rollup": {
+        "code": 273528,
+        "import_statements": 0
+      },
+      "webpack": {
+        "code": 274495
+      }
+    }
   }
 }

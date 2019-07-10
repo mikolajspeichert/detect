@@ -1,3 +1,3 @@
-import { Classifier } from "..";
+import { Classifier } from ".";
 declare const frontalface: Classifier;
 export { frontalface };

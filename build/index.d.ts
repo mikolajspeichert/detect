@@ -9,4 +9,3 @@ export declare const classifiers: {
     eye: Classifier;
     frontalface: Classifier;
 };
-export * from "./utils";

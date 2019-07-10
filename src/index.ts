@@ -100,9 +100,8 @@ export const detector = (width: number, height: number, scaleFactor: number, cla
 
     return { detect, canvas }
 }
-import { eye } from "./classifiers/eye"
-import { frontalface } from "./classifiers/frontalface"
+
+import { eye } from "./eye"
+import { frontalface } from "./frontalface"
 
 export const classifiers = { eye, frontalface }
-
-export * from "./utils"

@@ -1,6 +1,6 @@
 {
   "name": "detect",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "main": "build/detect.cjs.development.js",
   "module": "build/detect.esm.development.js",
   "repository": {
